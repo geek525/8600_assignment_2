@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--num_workers", type=str, default="auto")
     parser.add_argument("--time_eps", type=float, default=0.005)
-    parser.add_argument("--non_fm_ratio", type=float, default=0.25)
+    parser.add_argument("--flow_matching_ratio", type=float, default=0.5)
     parser.add_argument("--loss_p", type=float, default=1.0)
     parser.add_argument("--loss_c", type=float, default=1e-3)
     parser.add_argument("--time_sampler", type=str, default="logit_normal_pair",
@@ -93,7 +93,7 @@ def build_train_cmd(args: argparse.Namespace, dataset: str, out_dir: Path) -> li
         "--lr", str(args.lr),
         "--num_workers", str(args.num_workers),
         "--time_eps", str(args.time_eps),
-        "--non_fm_ratio", str(args.non_fm_ratio),
+        "--flow_matching_ratio", str(args.flow_matching_ratio),
         "--loss_p", str(args.loss_p),
         "--loss_c", str(args.loss_c),
         "--hidden_dim", str(args.hidden_dim),
