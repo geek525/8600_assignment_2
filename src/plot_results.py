@@ -97,19 +97,25 @@ def plot_from_experiment_dir(args: argparse.Namespace) -> None:
     real_2d = maybe_subsample(real_2d, args.num_points, args.seed)
     gen_2d = maybe_subsample(gen_2d, args.num_points, args.seed)
 
+    time_schedule = config.get("time_schedule")
+
     parts = [dataset_name, f"D={dim}"]
     if prediction:
         parts.append(f"pred={prediction}")
     if loss:
         parts.append(f"loss={loss}")
+    if time_schedule is not None:
+        parts.append(f"schedule={time_schedule}")
     title = " | ".join(parts)
 
-    stem = f"{dataset_name}_D{dim}"
+    stem_parts = [dataset_name, f"D{dim}"]
     if prediction:
-        stem += f"_pred-{prediction}"
+        stem_parts.append(f"pred-{prediction}")
     if loss:
-        stem += f"_loss-{loss}"
-    stem += "_generated_vs_ground_truth"
+        stem_parts.append(f"loss-{loss}")
+    if time_schedule is not None:
+        stem_parts.append(f"schedule-{time_schedule}")
+    stem = "_".join(stem_parts) + "_generated_vs_ground_truth"
 
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
@@ -132,23 +138,29 @@ def plot_from_sample_dir(args: argparse.Namespace) -> None:
     real_2d = maybe_subsample(real_2d, args.num_points, args.seed)
     gen_2d = maybe_subsample(gen_2d, args.num_points, args.seed)
 
+    time_schedule = config.get("time_schedule")
+
     parts = [dataset_name, f"D={dim}"]
     if prediction:
         parts.append(f"pred={prediction}")
     if loss:
         parts.append(f"loss={loss}")
+    if time_schedule is not None:
+        parts.append(f"schedule={time_schedule}")
     if sample_steps is not None:
         parts.append(f"steps={sample_steps}")
     title = " | ".join(parts)
 
-    stem = f"{dataset_name}_D{dim}"
+    stem_parts = [dataset_name, f"D{dim}"]
     if prediction:
-        stem += f"_pred-{prediction}"
+        stem_parts.append(f"pred-{prediction}")
     if loss:
-        stem += f"_loss-{loss}"
+        stem_parts.append(f"loss-{loss}")
+    if time_schedule is not None:
+        stem_parts.append(f"schedule-{time_schedule}")
     if sample_steps is not None:
-        stem += f"_steps-{sample_steps:03d}"
-    stem += "_generated_vs_ground_truth"
+        stem_parts.append(f"steps-{sample_steps:03d}")
+    stem = "_".join(stem_parts) + "_generated_vs_ground_truth"
 
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
