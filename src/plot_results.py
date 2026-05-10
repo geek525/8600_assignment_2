@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import matplotlib
@@ -10,6 +11,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.dataloader import ToyDiffusionDataset
+
+_DEFAULT_LR = 1e-3
+_DEFAULT_HIDDEN_DIM = 256
+_DEFAULT_STEPS = 25000
+_DEFAULT_TIME_EPS = 0.005
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +72,68 @@ def load_real_2d(dataset_name: str, dim: int, data_dir: str) -> np.ndarray:
     return dataset.to_2d(dataset.data.numpy())
 
 
+def format_float_for_filename(value: float | str) -> str:
+    v = float(value)
+    s = f"{v:.2e}"
+    # Remove trailing zeros in coefficient: "1.00e-03" -> "1e-03"
+    s = re.sub(r"(\d)\.?0+e", r"\1e", s)
+    # Remove leading zeros in exponent: "1e-03" -> "1e-3"
+    s = re.sub(r"e([+-])0*(\d+)", lambda m: f"e{m.group(1)}{m.group(2)}", s)
+    return s.replace("-", "m").replace("+", "").replace(".", "p")
+
+
+def build_labels(
+    config: dict,
+    dataset_name: str,
+    dim: int,
+    prediction: str | None,
+    loss: str | None,
+    sample_steps: int | None = None,
+    dir_name: str = "",
+) -> tuple[str, str]:
+    """Return (plot_title, filename_stem) based on config metadata."""
+    title_parts = [dataset_name, f"D={dim}"]
+    stem_parts = [dataset_name, f"D{dim}"]
+
+    if prediction:
+        title_parts.append(f"pred={prediction}")
+        stem_parts.append(f"pred-{prediction}")
+    if loss:
+        title_parts.append(f"loss={loss}")
+        stem_parts.append(f"loss-{loss}")
+
+    time_schedule = config.get("time_schedule")
+    if time_schedule is not None:
+        title_parts.append(f"schedule={time_schedule}")
+        stem_parts.append(f"schedule-{time_schedule}")
+
+    lr = config.get("lr")
+    if lr is not None and ("lr" in dir_name or float(lr) != _DEFAULT_LR):
+        title_parts.append(f"lr={lr}")
+        stem_parts.append(f"lr-{format_float_for_filename(lr)}")
+
+    hidden_dim = config.get("hidden_dim")
+    if hidden_dim is not None and ("hidden" in dir_name or int(hidden_dim) != _DEFAULT_HIDDEN_DIM):
+        title_parts.append(f"hidden={hidden_dim}")
+        stem_parts.append(f"hidden-{hidden_dim}")
+
+    steps = config.get("steps")
+    if steps is not None and int(steps) != _DEFAULT_STEPS:
+        title_parts.append(f"train_steps={steps}")
+        stem_parts.append(f"steps-{steps}")
+
+    time_eps = config.get("time_eps")
+    if time_eps is not None and float(time_eps) != _DEFAULT_TIME_EPS:
+        title_parts.append(f"time_eps={time_eps}")
+        stem_parts.append(f"timeeps-{format_float_for_filename(time_eps)}")
+
+    if sample_steps is not None:
+        title_parts.append(f"steps={sample_steps}")
+        stem_parts.append(f"steps-{sample_steps:03d}")
+
+    return " | ".join(title_parts), "_".join(stem_parts) + "_generated_vs_ground_truth"
+
+
 def plot_generated_vs_ground_truth(
     real_2d: np.ndarray,
     gen_2d: np.ndarray,
@@ -97,25 +165,14 @@ def plot_from_experiment_dir(args: argparse.Namespace) -> None:
     real_2d = maybe_subsample(real_2d, args.num_points, args.seed)
     gen_2d = maybe_subsample(gen_2d, args.num_points, args.seed)
 
-    time_schedule = config.get("time_schedule")
-
-    parts = [dataset_name, f"D={dim}"]
-    if prediction:
-        parts.append(f"pred={prediction}")
-    if loss:
-        parts.append(f"loss={loss}")
-    if time_schedule is not None:
-        parts.append(f"schedule={time_schedule}")
-    title = " | ".join(parts)
-
-    stem_parts = [dataset_name, f"D{dim}"]
-    if prediction:
-        stem_parts.append(f"pred-{prediction}")
-    if loss:
-        stem_parts.append(f"loss-{loss}")
-    if time_schedule is not None:
-        stem_parts.append(f"schedule-{time_schedule}")
-    stem = "_".join(stem_parts) + "_generated_vs_ground_truth"
+    title, stem = build_labels(
+        config=config,
+        dataset_name=dataset_name,
+        dim=dim,
+        prediction=prediction,
+        loss=loss,
+        dir_name=exp_dir.name,
+    )
 
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
@@ -138,29 +195,15 @@ def plot_from_sample_dir(args: argparse.Namespace) -> None:
     real_2d = maybe_subsample(real_2d, args.num_points, args.seed)
     gen_2d = maybe_subsample(gen_2d, args.num_points, args.seed)
 
-    time_schedule = config.get("time_schedule")
-
-    parts = [dataset_name, f"D={dim}"]
-    if prediction:
-        parts.append(f"pred={prediction}")
-    if loss:
-        parts.append(f"loss={loss}")
-    if time_schedule is not None:
-        parts.append(f"schedule={time_schedule}")
-    if sample_steps is not None:
-        parts.append(f"steps={sample_steps}")
-    title = " | ".join(parts)
-
-    stem_parts = [dataset_name, f"D{dim}"]
-    if prediction:
-        stem_parts.append(f"pred-{prediction}")
-    if loss:
-        stem_parts.append(f"loss-{loss}")
-    if time_schedule is not None:
-        stem_parts.append(f"schedule-{time_schedule}")
-    if sample_steps is not None:
-        stem_parts.append(f"steps-{sample_steps:03d}")
-    stem = "_".join(stem_parts) + "_generated_vs_ground_truth"
+    title, stem = build_labels(
+        config=config,
+        dataset_name=dataset_name,
+        dim=dim,
+        prediction=prediction,
+        loss=loss,
+        sample_steps=sample_steps,
+        dir_name=sample_dir.name,
+    )
 
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
