@@ -42,6 +42,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample_interval", type=int, default=5000)
     parser.add_argument("--num_samples", type=int, default=5000)
     parser.add_argument("--sample_steps", type=int, default=50)
+    parser.add_argument("--hidden_dim", type=int, default=256)
+    parser.add_argument("--num_hidden_layers", type=int, default=5)
+    parser.add_argument("--time_embed_dim", type=int, default=128)
     parser.add_argument("--time_eps", type=float, default=1e-5)
     parser.add_argument("--time_schedule", type=str, default="uniform",
                         choices=["uniform", "low_noise", "high_noise", "middle"])
@@ -144,7 +147,12 @@ def train(args: argparse.Namespace) -> None:
         num_workers=num_workers,
     )
 
-    model = FlowMLP(data_dim=args.dim)
+    model = FlowMLP(
+        data_dim=args.dim,
+        time_embed_dim=args.time_embed_dim,
+        hidden_dim=args.hidden_dim,
+        num_hidden_layers=args.num_hidden_layers,
+    )
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
