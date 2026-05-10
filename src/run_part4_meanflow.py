@@ -18,11 +18,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Part 4.2 MeanFlow batch runner")
 
     parser.add_argument("--train_root", type=str,
-                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_train_rt")
+                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_train_fix3_sampler")
     parser.add_argument("--sample_root", type=str,
-                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_samples_rt")
+                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_samples_fix3_sampler")
     parser.add_argument("--fig_root", type=str,
-                        default="/content/drive/MyDrive/Flowmatching/report_figures/part4_meanflow_rt")
+                        default="/content/drive/MyDrive/Flowmatching/report_figures/part4_meanflow_fix3_sampler")
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--datasets", type=str, default="swiss_roll,gaussians,circles")
     parser.add_argument("--dim", type=int, default=32)
@@ -35,6 +35,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--flow_matching_ratio", type=float, default=0.5)
     parser.add_argument("--loss_p", type=float, default=1.0)
     parser.add_argument("--loss_c", type=float, default=1e-3)
+    parser.add_argument("--time_sampler", type=str, default="logit_normal_pair",
+                        choices=["uniform_conditional", "logit_normal_pair"])
+    parser.add_argument("--p_mean", type=float, default=-0.4)
+    parser.add_argument("--p_std", type=float, default=1.0)
 
     parser.add_argument("--hidden_dim", type=int, default=256)
     parser.add_argument("--num_hidden_layers", type=int, default=5)
@@ -100,6 +104,9 @@ def build_train_cmd(args: argparse.Namespace, dataset: str, out_dir: Path) -> li
         "--seed", str(args.seed),
         "--sample_steps", "1",
         "--num_samples", str(args.num_samples),
+        "--time_sampler", args.time_sampler,
+        "--p_mean", str(args.p_mean),
+        "--p_std", str(args.p_std),
     ]
 
 

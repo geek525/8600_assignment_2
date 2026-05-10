@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--flow_matching_ratio", type=float, default=0.5)
     parser.add_argument("--loss_p", type=float, default=1.0)
     parser.add_argument("--loss_c", type=float, default=1e-3)
+    parser.add_argument("--time_sampler", type=str, default="logit_normal_pair",
+                        choices=["uniform_conditional", "logit_normal_pair"])
+    parser.add_argument("--p_mean", type=float, default=-0.4)
+    parser.add_argument("--p_std", type=float, default=1.0)
+    parser.add_argument("--debug_time_intervals", action="store_true", default=False)
 
     parser.add_argument("--hidden_dim", type=int, default=256)
     parser.add_argument("--num_hidden_layers", type=int, default=5)
@@ -133,7 +138,7 @@ def train(args: argparse.Namespace) -> None:
     config = {
         **vars(args),
         "model_type": "meanflow_rt",
-        "conditioning": "r_t",
+        "conditioning": "t_h",
         "prediction": "x",
         "loss": "meanflow",
     }
@@ -183,6 +188,10 @@ def train(args: argparse.Namespace) -> None:
                 flow_matching_ratio=args.flow_matching_ratio,
                 loss_p=args.loss_p,
                 loss_c=args.loss_c,
+                time_sampler=args.time_sampler,
+                p_mean=args.p_mean,
+                p_std=args.p_std,
+                debug_time_intervals=(step == 1 and args.debug_time_intervals),
             )
 
             optimizer.zero_grad(set_to_none=True)
@@ -221,6 +230,7 @@ def train(args: argparse.Namespace) -> None:
         dim=args.dim,
         num_steps=args.sample_steps,
         device=device,
+        debug_time_intervals=args.debug_time_intervals,
     )
     samples_np = samples.detach().cpu().numpy()
     np.save(samples_dir / "final_samples.npy", samples_np)

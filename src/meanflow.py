@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from src.flow import sample_time
@@ -12,16 +11,31 @@ def sample_meanflow_times(
     device: torch.device | str,
     eps: float = 0.005,
     flow_matching_ratio: float = 0.5,
+    time_sampler: str = "logit_normal_pair",
+    p_mean: float = -0.4,
+    p_std: float = 1.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample r and t for MeanFlow training. Both shapes [B, 1].
 
-    mask=True  (flow_matching_ratio fraction): r = t  → standard FM (h=0)
-    mask=False: r ~ Uniform(0, t)              → mean-flow interval
-    """
-    t = sample_time(batch_size, device, eps=eps, schedule="uniform")
+    time_sampler="uniform_conditional":
+        t ~ Uniform(eps, 1-eps), r ~ Uniform(0, t)
+    time_sampler="logit_normal_pair":
+        (r, t) = sorted sigmoid of two independent logit-normal draws
 
-    u_rand = torch.rand(batch_size, 1, device=device)
-    r = u_rand * t
+    After sampling, flow_matching_ratio fraction of samples get r = t (h=0),
+    which reduces to standard Flow Matching for those samples.
+    """
+    if time_sampler == "logit_normal_pair":
+        y = torch.randn(2, batch_size, 1, device=device)
+        times = torch.sigmoid(y * p_std + p_mean)
+        times = times.clamp(eps, 1.0 - eps)
+        sorted_times = torch.sort(times, dim=0).values
+        r = sorted_times[0]   # smaller value → left endpoint
+        t = sorted_times[1]   # larger value  → current time
+    else:  # "uniform_conditional"
+        t = sample_time(batch_size, device, eps=eps, schedule="uniform")
+        u_rand = torch.rand(batch_size, 1, device=device)
+        r = u_rand * t
 
     mask = torch.rand(batch_size, 1, device=device) < flow_matching_ratio
     r = torch.where(mask, t, r)
@@ -33,19 +47,38 @@ def make_meanflow_batch(
     x: torch.Tensor,
     time_eps: float = 0.005,
     flow_matching_ratio: float = 0.5,
+    time_sampler: str = "logit_normal_pair",
+    p_mean: float = -0.4,
+    p_std: float = 1.0,
+    debug_time_intervals: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Build training tensors for one MeanFlow batch."""
     B, device = x.shape[0], x.device
 
-    eps = torch.randn_like(x)
+    noise = torch.randn_like(x)
     r, t = sample_meanflow_times(
-        B, device, eps=time_eps, flow_matching_ratio=flow_matching_ratio
+        B, device,
+        eps=time_eps,
+        flow_matching_ratio=flow_matching_ratio,
+        time_sampler=time_sampler,
+        p_mean=p_mean,
+        p_std=p_std,
     )
 
-    z_t = (1.0 - t) * x + t * eps
-    v = eps - x
+    if debug_time_intervals:
+        h = t - r
+        frac_zero = (h.abs() < 1e-6).float().mean().item()
+        print(
+            f"[debug intervals] mean(t)={t.mean():.3f}  mean(r)={r.mean():.3f}  "
+            f"mean(h)={h.mean():.3f}  "
+            f"h in [{h.min():.3f}, {h.max():.3f}]  "
+            f"frac(h≈0)={frac_zero:.2f}  (flow_matching_ratio={flow_matching_ratio})"
+        )
 
-    return {"x": x, "eps": eps, "z_t": z_t, "v": v, "r": r, "t": t}
+    z_t = (1.0 - t) * x + t * noise
+    v = noise - x
+
+    return {"x": x, "eps": noise, "z_t": z_t, "v": v, "r": r, "t": t}
 
 
 def meanflow_loss(
@@ -55,6 +88,10 @@ def meanflow_loss(
     flow_matching_ratio: float = 0.5,
     loss_p: float = 1.0,
     loss_c: float = 1e-3,
+    time_sampler: str = "logit_normal_pair",
+    p_mean: float = -0.4,
+    p_std: float = 1.0,
+    debug_time_intervals: bool = False,
 ) -> torch.Tensor:
     """MeanFlow training loss — paper Algorithm 1.
 
@@ -63,9 +100,17 @@ def meanflow_loss(
       r is held fixed during the JVP, so dr/dt = 0.
 
     Target: u_tgt = v - (t - r) * dudt
-    When r = t: u_tgt = v  →  reduces to standard Flow Matching.
+    When r = t (h=0): u_tgt = v  →  reduces to standard Flow Matching.
     """
-    batch = make_meanflow_batch(x, time_eps=time_eps, flow_matching_ratio=flow_matching_ratio)
+    batch = make_meanflow_batch(
+        x,
+        time_eps=time_eps,
+        flow_matching_ratio=flow_matching_ratio,
+        time_sampler=time_sampler,
+        p_mean=p_mean,
+        p_std=p_std,
+        debug_time_intervals=debug_time_intervals,
+    )
     z, r, t, v = batch["z_t"], batch["r"], batch["t"], batch["v"]
 
     def fn(z_in: torch.Tensor, r_in: torch.Tensor, t_in: torch.Tensor) -> torch.Tensor:
@@ -98,6 +143,7 @@ def sample_meanflow(
     dim: int,
     num_steps: int,
     device: torch.device | str,
+    debug_time_intervals: bool = False,
 ) -> torch.Tensor:
     """Generate samples using MeanFlow ODE.
 
@@ -118,6 +164,9 @@ def sample_meanflow(
     for i in range(num_steps):
         t_i = float(times[i].item())
         r_i = float(times[i + 1].item())
+
+        if debug_time_intervals:
+            print(f"[debug sampling] t={t_i:.4f} -> r={r_i:.4f}, h={t_i - r_i:.4f}")
 
         t_batch = torch.full((num_samples, 1), t_i, device=device)
         r_batch = torch.full((num_samples, 1), r_i, device=device)
