@@ -92,12 +92,9 @@ class MeanFlowMLP(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, z: torch.Tensor, r: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        """model(z, r, t) — paper-native parameterization.
-
-        r: left endpoint of the interval [B, 1]
-        t: right endpoint / current time  [B, 1]
-        """
-        e_r = self.time_embed(r)
-        e_t = self.horizon_embed(t)
-        x = torch.cat([z, e_r, e_t], dim=-1)
+        """model(z, r, t) with internal (t, h=t-r) conditioning."""
+        h = t - r
+        e_t = self.time_embed(t)
+        e_h = self.horizon_embed(h)
+        x = torch.cat([z, e_t, e_h], dim=-1)
         return self.net(x)
