@@ -103,7 +103,7 @@ def build_labels(
         stem_parts.append(f"loss-{loss}")
 
     time_schedule = config.get("time_schedule")
-    if time_schedule is not None:
+    if time_schedule is not None and (time_schedule != "uniform" or "schedule" in dir_name):
         title_parts.append(f"schedule={time_schedule}")
         stem_parts.append(f"schedule-{time_schedule}")
 
