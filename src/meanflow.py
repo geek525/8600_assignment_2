@@ -130,7 +130,6 @@ def meanflow_loss(
     assert u_tgt.shape == z.shape, f"u_tgt must be a vector field [B,D]: got {u_tgt.shape}, expected {z.shape}"
 
     error = u - u_tgt
-
     per_sample_l2 = error.pow(2).sum(dim=1)
 
     if loss_p == 0.0:
@@ -179,7 +178,7 @@ def sample_meanflow(
 
         u = model(z, r_batch, t_batch)
         assert u.shape == z.shape, f"sampling u must be [B,D]: got {u.shape}, expected {z.shape}"
-        z = z - (t_batch - r_batch) * u
+        z = z - (t_batch - r_batch) * u  # (t-r) is [B,1], u is [B,D] → broadcasts correctly
 
     if was_training:
         model.train()
