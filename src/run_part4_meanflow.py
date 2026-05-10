@@ -18,11 +18,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Part 4.2 MeanFlow batch runner")
 
     parser.add_argument("--train_root", type=str,
-                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_train")
+                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_train_rt")
     parser.add_argument("--sample_root", type=str,
-                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_samples")
+                        default="/content/drive/MyDrive/Flowmatching/part4_meanflow_samples_rt")
     parser.add_argument("--fig_root", type=str,
-                        default="/content/drive/MyDrive/Flowmatching/report_figures/part4_meanflow")
+                        default="/content/drive/MyDrive/Flowmatching/report_figures/part4_meanflow_rt")
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--datasets", type=str, default="swiss_roll,gaussians,circles")
     parser.add_argument("--dim", type=int, default=32)
@@ -154,11 +154,12 @@ def do_sample_and_save(
         "dim": dim,
         "prediction": "x",
         "loss": None,
-        "model_type": "meanflow",
+        "model_type": "meanflow_rt",
+        "conditioning": "r_t",
         "source_train_dir": str(train_dir),
         "sample_steps": sample_steps,
         "num_samples": num_samples,
-        "part": "part4_meanflow",
+        "part": "part4_meanflow_rt",
     }
     (sample_out_dir / "config.json").write_text(json.dumps(out_config, indent=2))
     print(f"  Saved samples to {sample_out_dir}")

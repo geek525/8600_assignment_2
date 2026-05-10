@@ -132,7 +132,8 @@ def train(args: argparse.Namespace) -> None:
 
     config = {
         **vars(args),
-        "model_type": "meanflow",
+        "model_type": "meanflow_rt",
+        "conditioning": "r_t",
         "prediction": "x",
         "loss": "meanflow",
     }

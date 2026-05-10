@@ -12,25 +12,21 @@ def sample_meanflow_times(
     device: torch.device | str,
     eps: float = 0.005,
     flow_matching_ratio: float = 0.5,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Sample t, r, h for MeanFlow training. All shapes [B, 1].
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample r and t for MeanFlow training. Both shapes [B, 1].
 
-    h = t - r.
-    For flow-matching samples (mask=True), h=0 and r=t,
-    reducing to standard instantaneous Flow Matching.
+    mask=True  (flow_matching_ratio fraction): r = t  → standard FM (h=0)
+    mask=False: r ~ Uniform(0, t)              → mean-flow interval
     """
     t = sample_time(batch_size, device, eps=eps, schedule="uniform")
 
-    u = torch.rand(batch_size, 1, device=device)
-    r = u * t
-    h = t - r
+    u_rand = torch.rand(batch_size, 1, device=device)
+    r = u_rand * t
 
-    # flow_matching_ratio fraction of samples use h=0 (standard FM)
     mask = torch.rand(batch_size, 1, device=device) < flow_matching_ratio
     r = torch.where(mask, t, r)
-    h = torch.where(mask, torch.zeros_like(h), h)
 
-    return t, r, h
+    return r, t
 
 
 def make_meanflow_batch(
@@ -42,14 +38,14 @@ def make_meanflow_batch(
     B, device = x.shape[0], x.device
 
     eps = torch.randn_like(x)
-    t, r, h = sample_meanflow_times(
+    r, t = sample_meanflow_times(
         B, device, eps=time_eps, flow_matching_ratio=flow_matching_ratio
     )
 
     z_t = (1.0 - t) * x + t * eps
     v = eps - x
 
-    return {"x": x, "eps": eps, "z_t": z_t, "v": v, "t": t, "r": r, "h": h}
+    return {"x": x, "eps": eps, "z_t": z_t, "v": v, "r": r, "t": t}
 
 
 def meanflow_loss(
@@ -60,32 +56,28 @@ def meanflow_loss(
     loss_p: float = 1.0,
     loss_c: float = 1e-3,
 ) -> torch.Tensor:
-    """Compute the MeanFlow training loss using torch.func.jvp.
+    """MeanFlow training loss — paper Algorithm 1.
 
-    Model interface: model(z, t, h)
-    JVP tangents for (z, t, h): (v, ones, ones)
-      - dz/dt = v   (velocity along the linear path)
-      - dt/dt = 1
-      - dh/dt = 1   (since h = t - r and r is held fixed)
+    Model interface: model(z, r, t)
+    JVP tangents: (dz/dt, dr/dt, dt/dt) = (v, 0, 1)
+      r is held fixed during the JVP, so dr/dt = 0.
 
-    Target: u_tgt = v - h * dudt
-    Loss: MSE(u, stop_gradient(u_tgt)), optionally with adaptive weighting.
-
-    When h=0, u_tgt = v, reducing to standard Flow Matching.
+    Target: u_tgt = v - (t - r) * dudt
+    When r = t: u_tgt = v  →  reduces to standard Flow Matching.
     """
     batch = make_meanflow_batch(x, time_eps=time_eps, flow_matching_ratio=flow_matching_ratio)
-    z, t, h, v = batch["z_t"], batch["t"], batch["h"], batch["v"]
+    z, r, t, v = batch["z_t"], batch["r"], batch["t"], batch["v"]
 
-    def fn(z_in: torch.Tensor, t_in: torch.Tensor, h_in: torch.Tensor) -> torch.Tensor:
-        return model(z_in, t_in, h_in)
+    def fn(z_in: torch.Tensor, r_in: torch.Tensor, t_in: torch.Tensor) -> torch.Tensor:
+        return model(z_in, r_in, t_in)
 
     u, dudt = torch.func.jvp(
         fn,
-        (z, t, h),
-        (v, torch.ones_like(t), torch.ones_like(h)),
+        (z, r, t),
+        (v, torch.zeros_like(r), torch.ones_like(t)),
     )
 
-    u_tgt = (v - h * dudt).detach()
+    u_tgt = (v - (t - r) * dudt).detach()
 
     error = u - u_tgt
     per_sample_l2 = error.pow(2).sum(dim=1)
@@ -110,7 +102,12 @@ def sample_meanflow(
     """Generate samples using MeanFlow ODE.
 
     Starts from z ~ N(0,I) at t=1 and steps toward t=0.
-    Update: z_r = z_t - h * u(z_t, t, h)
+    For each interval [r_i, t_i]:
+        u = model(z, r_batch, t_batch)
+        z = z - (t - r) * u
+
+    Example with num_steps=5:
+        t=1.0, r=0.8 → t=0.8, r=0.6 → ... → t=0.2, r=0.0
     """
     was_training = model.training
     model.eval()
@@ -120,13 +117,13 @@ def sample_meanflow(
 
     for i in range(num_steps):
         t_i = float(times[i].item())
-        h_i = float(times[i].item() - times[i + 1].item())
+        r_i = float(times[i + 1].item())
 
         t_batch = torch.full((num_samples, 1), t_i, device=device)
-        h_batch = torch.full((num_samples, 1), h_i, device=device)
+        r_batch = torch.full((num_samples, 1), r_i, device=device)
 
-        u = model(z, t_batch, h_batch)
-        z = z - h_batch * u
+        u = model(z, r_batch, t_batch)
+        z = z - (t_batch - r_batch) * u
 
     if was_training:
         model.train()
