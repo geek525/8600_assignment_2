@@ -131,10 +131,7 @@ def meanflow_loss(
 
     error = u - u_tgt
 
-    # FIX 2: .mean(dim=1) 而不是 .sum(dim=1)
-    # sum 会随数据维度 D 线性增大，导致 adaptive weight 趋近 0，梯度信号消失。
-    # mean 保持量纲稳定，与 loss_c=1e-3 的默认值匹配。
-    per_sample_l2 = error.pow(2).mean(dim=1)
+    per_sample_l2 = error.pow(2).sum(dim=1)
 
     if loss_p == 0.0:
         loss = per_sample_l2.mean()
