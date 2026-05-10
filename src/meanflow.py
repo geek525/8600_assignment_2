@@ -122,10 +122,19 @@ def meanflow_loss(
         (v, torch.zeros_like(r), torch.ones_like(t)),
     )
 
+    assert u.shape == z.shape, f"u must be a vector field [B,D]: got {u.shape}, expected {z.shape}"
+    assert dudt.shape == z.shape, f"dudt must be a vector field [B,D]: got {dudt.shape}, expected {z.shape}"
+
     u_tgt = (v - (t - r) * dudt).detach()
 
+    assert u_tgt.shape == z.shape, f"u_tgt must be a vector field [B,D]: got {u_tgt.shape}, expected {z.shape}"
+
     error = u - u_tgt
-    per_sample_l2 = error.pow(2).sum(dim=1)
+
+    # FIX 2: .mean(dim=1) 而不是 .sum(dim=1)
+    # sum 会随数据维度 D 线性增大，导致 adaptive weight 趋近 0，梯度信号消失。
+    # mean 保持量纲稳定，与 loss_c=1e-3 的默认值匹配。
+    per_sample_l2 = error.pow(2).mean(dim=1)
 
     if loss_p == 0.0:
         loss = per_sample_l2.mean()
@@ -172,6 +181,7 @@ def sample_meanflow(
         r_batch = torch.full((num_samples, 1), r_i, device=device)
 
         u = model(z, r_batch, t_batch)
+        assert u.shape == z.shape, f"sampling u must be [B,D]: got {u.shape}, expected {z.shape}"
         z = z - (t_batch - r_batch) * u
 
     if was_training:
