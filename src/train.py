@@ -43,6 +43,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_samples", type=int, default=5000)
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--time_eps", type=float, default=1e-5)
+    parser.add_argument("--time_schedule", type=str, default="uniform",
+                        choices=["uniform", "low_noise", "high_noise", "middle"])
     parser.add_argument("--num_workers", type=str, default="auto")
 
     args = parser.parse_args()
@@ -111,6 +113,8 @@ def train(args: argparse.Namespace) -> None:
     set_seed(args.seed)
     device = get_device(args.device)
     print(f"Using device: {device}")
+    print(f"time_eps: {args.time_eps}")
+    print(f"time_schedule: {args.time_schedule}")
 
     num_workers = resolve_num_workers(args.num_workers)
     print(f"Using num_workers={num_workers}")
@@ -156,7 +160,8 @@ def train(args: argparse.Namespace) -> None:
             step += 1
             x = x.to(device).float()
 
-            t = sample_time(x.shape[0], device=x.device, eps=args.time_eps)
+            t = sample_time(x.shape[0], device=x.device, eps=args.time_eps,
+                            schedule=args.time_schedule)
             eps = sample_noise(x)
             z_t = make_noisy_sample(x, eps, t)
             model_output = model(z_t, t)

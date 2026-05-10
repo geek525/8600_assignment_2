@@ -8,14 +8,33 @@ from torch import nn
 
 PredictionType = Literal["x", "v"]
 LossType = Literal["x", "v"]
+TimeSchedule = Literal["uniform", "low_noise", "high_noise", "middle"]
+
+_VALID_SCHEDULES = ["uniform", "low_noise", "high_noise", "middle"]
 
 
 def sample_time(
     batch_size: int,
     device: torch.device | str,
     eps: float = 1e-5,
+    schedule: TimeSchedule = "uniform",
 ) -> torch.Tensor:
-    return torch.rand(batch_size, 1, device=device) * (1 - 2 * eps) + eps
+    u = torch.rand(batch_size, 1, device=device)
+
+    if schedule == "uniform":
+        s = u
+    elif schedule == "low_noise":
+        s = u ** 2
+    elif schedule == "high_noise":
+        s = 1 - (1 - u) ** 2
+    elif schedule == "middle":
+        s = torch.distributions.Beta(2.0, 2.0).sample((batch_size, 1)).to(device)
+    else:
+        raise ValueError(
+            f"time_schedule must be one of {_VALID_SCHEDULES}, got '{schedule}'"
+        )
+
+    return eps + (1 - 2 * eps) * s
 
 
 def sample_noise(x: torch.Tensor) -> torch.Tensor:
